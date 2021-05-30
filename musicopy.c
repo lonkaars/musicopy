@@ -5,6 +5,22 @@
 #include <ini.h>
 #include <cwalk.h>
 
+typedef struct {
+	const char* music_dir;
+	const char* playlist_dir;
+	const char* exclude;
+	const char* include;
+	const char* existing;
+} config_file_opts;
+
+char* config_section = "default";
+
+static int handler(void* user, const char* section, const char* name, const char* value) {
+	config_file_opts* pconfig = (config_file_opts*)user;
+	printf("called :tada:\n");
+	return 1;
+}
+
 void exit_err(char* msg) {
 	printf("%s exiting...\n", msg);
 	exit(1);
@@ -20,18 +36,10 @@ int main() {
 	cwk_path_join(home, config_file_loc, config_path, config_path_size);
 
 	if( access(config_path, F_OK) != 0 ) exit_err("Config file could not be read!");
-	FILE* config_file_handle = fopen(config_path, "rw");
-	long config_file_length;
-	char* config_file_buffer = 0;
 
-	fseek(config_file_handle, 0, SEEK_END);
-	config_file_length = ftell(config_file_handle);
-	fseek(config_file_handle, 0, SEEK_SET);
-	config_file_buffer = malloc(config_file_length);
-	if(!config_file_buffer) exit_err("An error occured allocating memory for the config file!");
-	fread(config_file_buffer, 1, config_file_length, config_file_handle);
+	config_file_opts* config;
+	if (ini_parse(config_path, handler, &config) < 0) exit_err("Can't load configuration file!");
 
 	printf("%s\n", config_path);
-	printf("%s\n", config_file_buffer);
 	return 0;
 }

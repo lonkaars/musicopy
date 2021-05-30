@@ -1,15 +1,17 @@
 CC = gcc
 LD = gcc
 RM = rm -f
-CFLAGS = -lcwalk
+CFLAGS = -lcwalk -linih
 
-SOURCES := $(wildcard *.c)
-OBJECTS := $(patsubst %.c,%.o, $(SOURCES))
+OBJECTS := $(patsubst %.c,%.o, *.c)
 
 all: musicopy
 
+%.o: %.c
+	$(CC) -static -c $< $(CFLAGS)
+
 musicopy: $(OBJECTS)
-	$(CC) -static $(OBJECTS) $(CFLAGS) -o musicopy
+	$(CC) $(OBJECTS) $(CFLAGS) -o musicopy
 
 clean:
 	$(RM) musicopy
