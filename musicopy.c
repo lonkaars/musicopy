@@ -6,24 +6,57 @@
 #include <cwalk.h>
 
 typedef struct {
-	const char* music_dir;
-	const char* playlist_dir;
-	const char* exclude;
-	const char* include;
-	const char* existing;
+	char* music_dir;
+	char* playlist_dir;
+	char* exclude;
+	char* include;
+	char* existing;
 } config_file_opts;
 
 char* config_section = "default";
 
 static int handler(void* user, const char* section, const char* name, const char* value) {
 	config_file_opts* pconfig = (config_file_opts*)user;
-	printf("called :tada:\n");
+	if (strcmp(section, config_section) != 0) return 1;
+
+	if      (strcmp(name, "music_dir") == 0)    pconfig->music_dir    = strdup(value);
+	else if (strcmp(name, "playlist_dir") == 0) pconfig->playlist_dir = strdup(value);
+	else if (strcmp(name, "existing") == 0)     pconfig->existing     = strdup(value);
+	else if (strcmp(name, "include") == 0) {
+		int len = strlen(pconfig->include) + strlen(value) + 1;
+		char* include = (char*) malloc(len * sizeof(char));
+		sprintf(include, "%s%s\n", pconfig->include, value);
+
+		free(pconfig->include);
+		pconfig->include = strdup(include);
+		free(include);
+	}
+	else if (strcmp(name, "exclude") == 0) {
+		int len = strlen(pconfig->exclude) + strlen(value) + 1;
+		char* exclude = (char*) malloc(len * sizeof(char));
+		sprintf(exclude, "%s%s\n", pconfig->exclude, value);
+
+		free(pconfig->exclude);
+		pconfig->exclude = strdup(exclude);
+		free(exclude);
+	}
+
 	return 1;
 }
 
 void exit_err(char* msg) {
 	printf("%s exiting...\n", msg);
 	exit(1);
+}
+
+void print_opts(config_file_opts options) {
+	printf("{\n");
+	printf("    \"music_dir\":    \"%s\",\n", options.music_dir);
+	printf("    \"playlist_dir\": \"%s\",\n", options.playlist_dir);
+	printf("    \"existing\":     \"%s\",\n", options.existing);
+	printf("    \"include\":      \"%s\",\n", options.include);
+	printf("    \"exclude\":      \"%s\"\n",  options.exclude);
+	printf("}\n");
 }
 
 int main() {
@@ -37,9 +70,12 @@ int main() {
 
 	if( access(config_path, F_OK) != 0 ) exit_err("Config file could not be read!");
 
-	config_file_opts* config;
+	config_file_opts config;
+	config.exclude = strdup("");
+	config.include = strdup("");
 	if (ini_parse(config_path, handler, &config) < 0) exit_err("Can't load configuration file!");
 
-	printf("%s\n", config_path);
+	print_opts(config);
+
 	return 0;
 }
