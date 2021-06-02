@@ -15,40 +15,6 @@ typedef struct {
 
 char* config_section = "default";
 
-static int handler(void* user, const char* section, const char* name, const char* value) {
-	config_file_opts* pconfig = (config_file_opts*)user;
-	if (strcmp(section, config_section) != 0) return 1;
-
-	if      (strcmp(name, "music_dir") == 0)    pconfig->music_dir    = strdup(value);
-	else if (strcmp(name, "playlist_dir") == 0) pconfig->playlist_dir = strdup(value);
-	else if (strcmp(name, "existing") == 0)     pconfig->existing     = strdup(value);
-	else if (strcmp(name, "include") == 0) {
-		int len = strlen(pconfig->include) + strlen(value) + 1;
-		char* include = (char*) malloc(len * sizeof(char));
-		sprintf(include, "%s%s\n", pconfig->include, value);
-
-		free(pconfig->include);
-		pconfig->include = strdup(include);
-		free(include);
-	}
-	else if (strcmp(name, "exclude") == 0) {
-		int len = strlen(pconfig->exclude) + strlen(value) + 1;
-		char* exclude = (char*) malloc(len * sizeof(char));
-		sprintf(exclude, "%s%s\n", pconfig->exclude, value);
-
-		free(pconfig->exclude);
-		pconfig->exclude = strdup(exclude);
-		free(exclude);
-	}
-
-	return 1;
-}
-
-void exit_err(char* msg) {
-	printf("%s exiting...\n", msg);
-	exit(1);
-}
-
 void print_opts(config_file_opts options) {
 	printf("{\n");
 	printf("    \"music_dir\":    \"%s\",\n", options.music_dir);
@@ -59,7 +25,35 @@ void print_opts(config_file_opts options) {
 	printf("}\n");
 }
 
-int main() {
+void append_with_nl(char** dest, char* add) {
+	int len = strlen(*dest) + strlen(add) + 1;
+	char* temp = (char*) malloc(len * sizeof(char));
+	sprintf(temp, "%s%s\n", *dest, add);
+
+	free(*dest);
+	*dest = strdup(temp);
+	free(temp);
+}
+
+static int handler(void* user, const char* section, const char* name, const char* value) {
+	config_file_opts* pconfig = (config_file_opts*)user;
+	if (strcmp(section, config_section) != 0) return 1;
+
+	if      (0 == strcmp(name, "music_dir"))    pconfig->music_dir    = strdup(value);
+	else if (0 == strcmp(name, "playlist_dir")) pconfig->playlist_dir = strdup(value);
+	else if (0 == strcmp(name, "existing"))     pconfig->existing     = strdup(value);
+	else if (0 == strcmp(name, "include"))      append_with_nl(&pconfig->include, strdup(value));
+	else if (0 == strcmp(name, "exclude"))      append_with_nl(&pconfig->exclude, strdup(value));
+
+	return 1;
+}
+
+void exit_err(char* msg) {
+	printf("%s exiting...\n", msg);
+	exit(1);
+}
+
+config_file_opts load_config() {
 	char* home = getenv("HOME");
 	if(!home) exit_err("$HOME could not be read!");
 
@@ -70,10 +64,44 @@ int main() {
 
 	if( access(config_path, F_OK) != 0 ) exit_err("Config file could not be read!");
 
-	config_file_opts config;
-	config.exclude = strdup("");
-	config.include = strdup("");
+	config_file_opts config = {
+		.exclude      = strdup(""),
+		.existing     = strdup(""),
+		.include      = strdup(""),
+		.music_dir    = strdup(""),
+		.playlist_dir = strdup("")
+	};
 	if (ini_parse(config_path, handler, &config) < 0) exit_err("Can't load configuration file!");
+
+	return config;
+}
+
+void loop_over_str_nl(char* str, void fn(char*)) {
+	int len = strlen(str);
+	char temp_str[len];
+	int temp_len = 0;
+
+	for(int i = 0; i < len; i++) {
+		if (str[i] != '\n') {
+			temp_len++;
+			strncat(temp_str, &str[i], 1);
+		} else {
+			fn(temp_str);
+
+			temp_len = 0;
+			memcpy(temp_str, "", sizeof(char));
+		}
+	}
+}
+
+void callback(char* line) {
+	printf("line: %s\n", line);
+}
+
+int main() {
+	config_file_opts config = load_config();
+	
+	loop_over_str_nl(config.exclude, callback);
 
 	print_opts(config);
 
