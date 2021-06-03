@@ -80,11 +80,82 @@ void load_config() {
 	if (ini_parse(config_path, handler, NULL) < 0) exit_err("Can't load configuration file!");
 }
 
+void expandpath(char** path) {
+	wordexp_t run;
+	wordexp(*path, &run, WRDE_NOCMD);
+	free(*path);
+	*path = strdup(run.we_wordv[0]);
+}
+
+void fix_include_exclude(char*** listv, int listc) {
+	int music_dir_len = strlen(music_dir);
+	for(int i = 0; i < listc; i++) {
+		size_t new_path_size = (music_dir_len + strlen((*listv)[i]) + 4) * sizeof(char);
+		char* new_path = (char*) malloc(new_path_size);
+		cwk_path_join(music_dir, (*listv)[i], new_path, new_path_size);
+
+		free((*listv)[i]);
+		(*listv)[i] = new_path;
+	}
+}
+
+void copy(const char* path) {
+	printf("copying %s... to %s\n", path, target_music_dir);
+}
+
+int dir_callback(const char* path, const struct stat *sb, int tflag) {
+	if (include_length > 0) {
+		bool allowed = false;
+		for(int i = 0; i < include_length; i++) {
+			if(allowed) {
+				copy(path);
+				return 0;
+			} else {
+				allowed = fnmatch(exclude[i], path, 0) == 0;
+			}
+		}
+		return 0;
+	}
+
+	copy(path);
+
+	return 0;
+}
+
+void print_opts() {
+	printf("{\n");
+	printf("    \"music_dir\":           \"%s\",\n", music_dir);
+	printf("    \"playlist_dir\":        \"%s\",\n", playlist_dir);
+	printf("    \"target_music_dir\":    \"%s\",\n", target_music_dir);
+	printf("    \"target_playlist_dir\": \"%s\",\n", target_playlist_dir);
+	printf("    \"existing\":            \"%s\",\n", existing);
+	printf("    \"include\": [\n");
+	for(int i = 0; i < include_length; i++)
+		printf("        \"%s\"%c\n", include[i], i+1 == include_length ? ' ' : ',');
+	printf("    ],\n");
+	printf("    \"exclude\": [\n");
+	for(int i = 0; i < exclude_length; i++)
+		printf("        \"%s\"%c\n", exclude[i], i+1 == exclude_length ? ' ' : ',');
+	printf("    ]\n");
+	printf("}\n");
+}
+
 int main() {
 	load_config();
-	
-	// loop_over_str_nl(config.exclude, callback);
-	// ftw(dir, display_info, 0);
+
+	expandpath(&music_dir);
+	expandpath(&playlist_dir);
+
+	expandpath(&target_music_dir);
+	expandpath(&target_playlist_dir);
+
+	fix_include_exclude(&include, include_length);
+
+	fix_include_exclude(&exclude, exclude_length);
+
+	print_opts();
+
+	ftw(music_dir, dir_callback, 0);
 
 	return 0;
 }
