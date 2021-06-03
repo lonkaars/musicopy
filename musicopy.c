@@ -4,46 +4,51 @@
 #include <unistd.h>
 #include <ini.h>
 #include <cwalk.h>
+#include <ftw.h>
+#include <fnmatch.h>
+#include <wordexp.h>
 
-typedef struct {
-	char* music_dir;
-	char* playlist_dir;
-	char* exclude;
-	char* include;
-	char* existing;
-} config_file_opts;
+char* music_dir;
+char* playlist_dir;
+char* target_music_dir;
+char* target_playlist_dir;
+char** exclude;
+int exclude_length;
+char** include;
+int include_length;
+char* existing;
 
 char* config_section = "default";
 
-void print_opts(config_file_opts options) {
-	printf("{\n");
-	printf("    \"music_dir\":    \"%s\",\n", options.music_dir);
-	printf("    \"playlist_dir\": \"%s\",\n", options.playlist_dir);
-	printf("    \"existing\":     \"%s\",\n", options.existing);
-	printf("    \"include\":      \"%s\",\n", options.include);
-	printf("    \"exclude\":      \"%s\"\n",  options.exclude);
-	printf("}\n");
+char* join_path(char* a, char* b) {
+	size_t size = (strlen(a) + strlen(b) + 4) * sizeof(char);
+	char* fullpath = (char*) malloc(size);
+	cwk_path_join(a, b, fullpath, size);
+	return fullpath;
 }
 
-void append_with_nl(char** dest, char* add) {
-	int len = strlen(*dest) + strlen(add) + 1;
-	char* temp = (char*) malloc(len * sizeof(char));
-	sprintf(temp, "%s%s\n", *dest, add);
+void append(char*** dest, int* length, char* add) {
+	(*length)++;
+	size_t new_size = *length * sizeof(char*);
+	char** temp = malloc(new_size);
+	for(int i = 0; i < *length -1; i++)
+		temp[i] = *dest[i];
+	temp[*length-1] = add;
 
 	free(*dest);
-	*dest = strdup(temp);
-	free(temp);
+	*dest = temp;
 }
 
 static int handler(void* user, const char* section, const char* name, const char* value) {
-	config_file_opts* pconfig = (config_file_opts*)user;
 	if (strcmp(section, config_section) != 0) return 1;
 
-	if      (0 == strcmp(name, "music_dir"))    pconfig->music_dir    = strdup(value);
-	else if (0 == strcmp(name, "playlist_dir")) pconfig->playlist_dir = strdup(value);
-	else if (0 == strcmp(name, "existing"))     pconfig->existing     = strdup(value);
-	else if (0 == strcmp(name, "include"))      append_with_nl(&pconfig->include, strdup(value));
-	else if (0 == strcmp(name, "exclude"))      append_with_nl(&pconfig->exclude, strdup(value));
+	if      (0 == strcmp(name, "music_dir"))           music_dir           = strdup(value);
+	else if (0 == strcmp(name, "playlist_dir"))        playlist_dir        = strdup(value);
+	else if (0 == strcmp(name, "target_music_dir"))    target_music_dir    = strdup(value);
+	else if (0 == strcmp(name, "target_playlist_dir")) target_playlist_dir = strdup(value);
+	else if (0 == strcmp(name, "existing"))            existing            = strdup(value);
+	else if (0 == strcmp(name, "include"))             append(&include, &include_length, strdup(value));
+	else if (0 == strcmp(name, "exclude"))             append(&exclude, &exclude_length, strdup(value));
 
 	return 1;
 }
@@ -53,7 +58,7 @@ void exit_err(char* msg) {
 	exit(1);
 }
 
-config_file_opts load_config() {
+void load_config() {
 	char* home = getenv("HOME");
 	if(!home) exit_err("$HOME could not be read!");
 
@@ -64,46 +69,22 @@ config_file_opts load_config() {
 
 	if( access(config_path, F_OK) != 0 ) exit_err("Config file could not be read!");
 
-	config_file_opts config = {
-		.exclude      = strdup(""),
-		.existing     = strdup(""),
-		.include      = strdup(""),
-		.music_dir    = strdup(""),
-		.playlist_dir = strdup("")
-	};
-	if (ini_parse(config_path, handler, &config) < 0) exit_err("Can't load configuration file!");
+	exclude_length      = 0;
+	include_length      = 0;
+	existing            = strdup("");
+	music_dir           = strdup("");
+	playlist_dir        = strdup("");
+	target_music_dir    = strdup("");
+	target_playlist_dir = strdup("");
 
-	return config;
-}
-
-void loop_over_str_nl(char* str, void fn(char*)) {
-	int len = strlen(str);
-	char temp_str[len];
-	int temp_len = 0;
-
-	for(int i = 0; i < len; i++) {
-		if (str[i] != '\n') {
-			temp_len++;
-			strncat(temp_str, &str[i], 1);
-		} else {
-			fn(temp_str);
-
-			temp_len = 0;
-			memcpy(temp_str, "", sizeof(char));
-		}
-	}
-}
-
-void callback(char* line) {
-	printf("line: %s\n", line);
+	if (ini_parse(config_path, handler, NULL) < 0) exit_err("Can't load configuration file!");
 }
 
 int main() {
-	config_file_opts config = load_config();
+	load_config();
 	
-	loop_over_str_nl(config.exclude, callback);
-
-	print_opts(config);
+	// loop_over_str_nl(config.exclude, callback);
+	// ftw(dir, display_info, 0);
 
 	return 0;
 }
