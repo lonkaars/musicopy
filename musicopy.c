@@ -104,6 +104,8 @@ void copy(const char* path) {
 }
 
 int dir_callback(const char* path, const struct stat *sb, int tflag) {
+	if(tflag != FTW_F) return 0;
+
 	if (include_length > 0) {
 		bool includes = false;
 		for(int i = 0; i < include_length; i++) {
@@ -155,7 +157,7 @@ int main() {
 
 	print_opts();
 
-	ftw(music_dir, dir_callback, FTW_F);
+	ftw(music_dir, dir_callback, 0);
 
 	return 0;
 }
