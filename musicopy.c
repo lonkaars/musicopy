@@ -100,22 +100,22 @@ void fix_include_exclude(char*** listv, int listc) {
 }
 
 void copy(const char* path) {
-	printf("copying %s... to %s\n", path, target_music_dir);
+	printf("copying %s to %s...\n", path, target_music_dir);
 }
 
 int dir_callback(const char* path, const struct stat *sb, int tflag) {
 	if (include_length > 0) {
-		bool allowed = false;
+		bool includes = false;
 		for(int i = 0; i < include_length; i++) {
-			if(allowed) {
-				copy(path);
-				return 0;
-			} else {
-				allowed = fnmatch(exclude[i], path, 0) == 0;
-			}
+			includes = fnmatch(include[i], path, 0) == 0;
+			if(includes) break;
 		}
-		return 0;
+		if (!includes) return 0;
 	}
+
+	if (exclude_length > 0)
+		for(int i = 0; i < exclude_length; i++)
+			if(fnmatch(exclude[i], path, 0) == 0) return 0;
 
 	copy(path);
 
@@ -155,7 +155,7 @@ int main() {
 
 	print_opts();
 
-	ftw(music_dir, dir_callback, 0);
+	ftw(music_dir, dir_callback, FTW_F);
 
 	return 0;
 }
