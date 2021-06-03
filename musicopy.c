@@ -19,12 +19,44 @@ int include_length;
 char* existing;
 
 char* config_section = "default";
+int buffer_size = 4096;
+
+void mkpath(char* file_path, mode_t mode) {
+    for (char* p = strchr(file_path + 1, '/'); p; p = strchr(p + 1, '/')) {
+        *p = '\0';
+		//TODO: error handling
+        mkdir(file_path, mode);
+        *p = '/';
+    }
+}
+
+void cp(char* source_path, char* dest_path) {
+	FILE *source, *dest;
+	source = fopen(source_path, "rb");
+	dest   = fopen(dest_path,   "wb");
+
+	char buffer[buffer_size];
+	size_t size;
+
+	while ((size = fread(buffer, 1, buffer_size, source)))
+        fwrite(buffer, 1, size, dest);
+
+	fclose(source);
+	fclose(dest);
+}
 
 char* join_path(char* a, char* b) {
 	size_t size = (strlen(a) + strlen(b) + 4) * sizeof(char);
 	char* fullpath = (char*) malloc(size);
 	cwk_path_join(a, b, fullpath, size);
 	return fullpath;
+}
+
+char* substr(const char* src, int from) {
+	int fulllen = strlen(src);
+	char* substr = malloc((fulllen - from + 2) * sizeof(char));
+	strcpy(substr, &src[from]);
+	return substr;
 }
 
 void append(char*** dest, int* length, char* add) {
@@ -63,9 +95,7 @@ void load_config() {
 	if(!home) exit_err("$HOME could not be read!");
 
 	char* config_file_loc = ".config/musicopy/rc.ini";
-	size_t config_path_size = (strlen(home) + strlen(config_file_loc) + 4) * sizeof(char);
-	char* config_path = malloc(config_path_size);
-	cwk_path_join(home, config_file_loc, config_path, config_path_size);
+	char* config_path = join_path(home, config_file_loc);
 
 	if( access(config_path, F_OK) != 0 ) exit_err("Config file could not be read!");
 
@@ -90,17 +120,27 @@ void expandpath(char** path) {
 void fix_include_exclude(char*** listv, int listc) {
 	int music_dir_len = strlen(music_dir);
 	for(int i = 0; i < listc; i++) {
-		size_t new_path_size = (music_dir_len + strlen((*listv)[i]) + 4) * sizeof(char);
-		char* new_path = (char*) malloc(new_path_size);
-		cwk_path_join(music_dir, (*listv)[i], new_path, new_path_size);
+		char* new_path = join_path(music_dir, (*listv)[i]);
 
 		free((*listv)[i]);
 		(*listv)[i] = new_path;
 	}
 }
 
-void copy(const char* path) {
-	printf("copying %s to %s...\n", path, target_music_dir);
+void copy(const char* fullpath) {
+	int baselen = strlen(music_dir);
+	char* basepath = substr(fullpath, baselen);
+	char* destpath = join_path(target_music_dir, basepath);
+
+	size_t destfolder_size;
+	cwk_path_get_dirname(destpath, &destfolder_size);
+	char* destfolder = (char*) malloc(destfolder_size);
+	destfolder = strncpy(destfolder, destpath, destfolder_size);
+
+	mkpath(destfolder, 0775);
+	char* sourcepath = strdup(fullpath);
+	cp(sourcepath, destpath);
+	free(sourcepath);
 }
 
 int dir_callback(const char* path, const struct stat *sb, int tflag) {
@@ -152,10 +192,7 @@ int main() {
 	expandpath(&target_playlist_dir);
 
 	fix_include_exclude(&include, include_length);
-
 	fix_include_exclude(&exclude, exclude_length);
-
-	print_opts();
 
 	ftw(music_dir, dir_callback, 0);
 
