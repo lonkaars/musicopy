@@ -1,7 +1,7 @@
 CC = gcc
 LD = gcc
 RM = rm -f
-CFLAGS = -lcwalk -linih
+CFLAGS = -lcwalk -linih -lcrypto
 
 OBJECTS := $(patsubst %.c,%.o, *.c)
 

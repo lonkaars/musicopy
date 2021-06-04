@@ -8,6 +8,7 @@
 #include <fnmatch.h>
 #include <wordexp.h>
 #include <sys/stat.h>
+#include <openssl/sha.h>
 
 char* music_dir;
 char* playlist_dir;
@@ -128,6 +129,23 @@ void fix_include_exclude(char*** listv, int listc) {
 	}
 }
 
+void sha1_file(char* path, unsigned char (*hash)[SHA_DIGEST_LENGTH]) {
+	SHA_CTX ctx;
+	SHA1_Init(&ctx);
+
+	FILE *file;
+	file = fopen(path, "rb");
+
+	char buffer[buffer_size];
+	size_t size;
+
+	while ((size = fread(buffer, 1, buffer_size, file)))
+		SHA1_Update(&ctx, buffer, size);
+
+	fclose(file);
+	SHA1_Final(*hash, &ctx);
+}
+
 bool duplicate(char* source, char* dest) {
 	if (strcmp(existing, "none") == 0) return true;
 	else if (strcmp(existing, "lazy") == 0) return false;
@@ -138,7 +156,10 @@ bool duplicate(char* source, char* dest) {
 		return src_st.st_size != dst_st.st_size;
 	}
 	else if (strcmp(existing, "hash") == 0) {
-		printf("compare hash\n");
+		unsigned char src_hash[SHA_DIGEST_LENGTH], dst_hash[SHA_DIGEST_LENGTH];
+		sha1_file(source, &src_hash);
+		sha1_file(dest, &dst_hash);
+		return memcmp(src_hash, dst_hash, SHA_DIGEST_LENGTH) != 0;
 	}
 
 	return false;
@@ -186,24 +207,6 @@ int dir_callback(const char* path, const struct stat *sb, int tflag) {
 	copy(path);
 
 	return 0;
-}
-
-void print_opts() {
-	printf("{\n");
-	printf("    \"music_dir\":           \"%s\",\n", music_dir);
-	printf("    \"playlist_dir\":        \"%s\",\n", playlist_dir);
-	printf("    \"target_music_dir\":    \"%s\",\n", target_music_dir);
-	printf("    \"target_playlist_dir\": \"%s\",\n", target_playlist_dir);
-	printf("    \"existing\":            \"%s\",\n", existing);
-	printf("    \"include\": [\n");
-	for(int i = 0; i < include_length; i++)
-		printf("        \"%s\"%c\n", include[i], i+1 == include_length ? ' ' : ',');
-	printf("    ],\n");
-	printf("    \"exclude\": [\n");
-	for(int i = 0; i < exclude_length; i++)
-		printf("        \"%s\"%c\n", exclude[i], i+1 == exclude_length ? ' ' : ',');
-	printf("    ]\n");
-	printf("}\n");
 }
 
 int main() {
