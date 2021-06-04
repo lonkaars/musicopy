@@ -7,6 +7,7 @@
 #include <ftw.h>
 #include <fnmatch.h>
 #include <wordexp.h>
+#include <sys/stat.h>
 
 char* music_dir;
 char* playlist_dir;
@@ -127,6 +128,22 @@ void fix_include_exclude(char*** listv, int listc) {
 	}
 }
 
+bool duplicate(char* source, char* dest) {
+	if (strcmp(existing, "none") == 0) return true;
+	else if (strcmp(existing, "lazy") == 0) return false;
+	else if (strcmp(existing, "size") == 0) {
+		struct stat src_st, dst_st;
+		stat(source, &src_st);
+		stat(dest, &dst_st);
+		return src_st.st_size != dst_st.st_size;
+	}
+	else if (strcmp(existing, "hash") == 0) {
+		printf("compare hash\n");
+	}
+
+	return false;
+}
+
 void copy(const char* fullpath) {
 	int baselen = strlen(music_dir);
 	char* basepath = substr(fullpath, baselen);
@@ -139,7 +156,14 @@ void copy(const char* fullpath) {
 
 	mkpath(destfolder, 0775);
 	char* sourcepath = strdup(fullpath);
-	cp(sourcepath, destpath);
+
+	bool copy = true;
+	if(access(destpath, F_OK) == 0) copy = duplicate(sourcepath, destpath);
+	if(copy) {
+		cp(sourcepath, destpath);
+		printf("%s -> %s\n", sourcepath, destpath);
+	}
+
 	free(sourcepath);
 }
 
