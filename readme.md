@@ -13,6 +13,7 @@ a simple utility that copies music and playlists from a folder to another folder
 
 - [inih](https://github.com/benhoyt/inih)
 - [cwalk](https://github.com/likle/cwalk)
+- [openssl](https://www.openssl.org/) (you probably already have this)
 
 ## config file
 
