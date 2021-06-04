@@ -9,6 +9,7 @@
 #include <wordexp.h>
 #include <sys/stat.h>
 #include <openssl/sha.h>
+#include <argp.h>
 
 char* music_dir;
 char* playlist_dir;
@@ -20,8 +21,48 @@ char** include;
 int include_length;
 char* existing;
 
-char* config_section = "default";
-int buffer_size = 4096;
+struct arguments {
+	int buffer_size;
+	char* config_section;
+	bool dry_run;
+};
+
+struct arguments arguments = {
+	.buffer_size = 4096,
+	.config_section = "default",
+	.dry_run = false
+};
+
+const char *argp_program_version = "0.1.0";
+const char *argp_program_bug_address = "https://github.com/lonkaars/musicopy/";
+static char doc[] = "a simple utility that copies music and playlists";
+static char args_doc[] = "arguments";
+static struct argp_option options[] = { 
+	{ "buffer_size",	'b',	"SIZE",		0,	"Buffer size (in bytes) used for copying, higher means less syscalls (faster) but more memory usage, lower is more syscalls (slower) but less memory usage"},
+	{ "player",			'p',	"PLAYER",	0,	"Config section to use"},
+	{ "dry_run",		'd',	0,			0,	"Don't copy files, just print what would be copied"},
+	{ 0 } 
+};
+
+static error_t parse_opt (int key, char *arg, struct argp_state *state) {
+	switch (key) {
+		case 'b': {
+			arguments.buffer_size = atoi(arg);
+			break;
+		}
+		case 'p': {
+			arguments.config_section = strdup(arg);
+			break;
+		}
+		case 'd': {
+			arguments.dry_run = true;
+			break;
+		}
+	}
+	return 0;
+}
+
+static struct argp argp = { options, parse_opt, args_doc, doc };
 
 void mkpath(char* file_path, mode_t mode) {
     for (char* p = strchr(file_path + 1, '/'); p; p = strchr(p + 1, '/')) {
@@ -33,14 +74,16 @@ void mkpath(char* file_path, mode_t mode) {
 }
 
 void cp(char* source_path, char* dest_path) {
+	if(arguments.dry_run) return;
+
 	FILE *source, *dest;
 	source = fopen(source_path, "rb");
 	dest   = fopen(dest_path,   "wb");
 
-	char buffer[buffer_size];
+	char buffer[arguments.buffer_size];
 	size_t size;
 
-	while ((size = fread(buffer, 1, buffer_size, source)))
+	while ((size = fread(buffer, 1, arguments.buffer_size, source)))
         fwrite(buffer, 1, size, dest);
 
 	fclose(source);
@@ -74,7 +117,7 @@ void append(char*** dest, int* length, char* add) {
 }
 
 static int handler(void* user, const char* section, const char* name, const char* value) {
-	if (strcmp(section, config_section) != 0) return 1;
+	if (strcmp(section, arguments.config_section) != 0) return 1;
 
 	if      (0 == strcmp(name, "music_dir"))           music_dir           = strdup(value);
 	else if (0 == strcmp(name, "playlist_dir"))        playlist_dir        = strdup(value);
@@ -136,10 +179,10 @@ void sha1_file(char* path, unsigned char (*hash)[SHA_DIGEST_LENGTH]) {
 	FILE *file;
 	file = fopen(path, "rb");
 
-	char buffer[buffer_size];
+	char buffer[arguments.buffer_size];
 	size_t size;
 
-	while ((size = fread(buffer, 1, buffer_size, file)))
+	while ((size = fread(buffer, 1, arguments.buffer_size, file)))
 		SHA1_Update(&ctx, buffer, size);
 
 	fclose(file);
@@ -209,7 +252,9 @@ int dir_callback(const char* path, const struct stat *sb, int tflag) {
 	return 0;
 }
 
-int main() {
+int main(int argc, char* argv[]) {
+	argp_parse(&argp, argc, argv, 0, 0, NULL);
+
 	load_config();
 
 	expandpath(&music_dir);
