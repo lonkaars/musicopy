@@ -21,17 +21,9 @@ char** include;
 int include_length;
 char* existing;
 
-struct arguments {
-	int buffer_size;
-	char* config_section;
-	bool dry_run;
-};
-
-struct arguments arguments = {
-	.buffer_size = 4096,
-	.config_section = "default",
-	.dry_run = false
-};
+int buffer_size = 4096;
+char* config_section = "default";
+bool dry_run = false;
 
 const char *argp_program_version = "0.1.0";
 const char *argp_program_bug_address = "https://github.com/lonkaars/musicopy/";
@@ -47,15 +39,15 @@ static struct argp_option options[] = {
 static error_t parse_opt (int key, char *arg, struct argp_state *state) {
 	switch (key) {
 		case 'b': {
-			arguments.buffer_size = atoi(arg);
+			buffer_size = atoi(arg);
 			break;
 		}
 		case 'p': {
-			arguments.config_section = strdup(arg);
+			config_section = strdup(arg);
 			break;
 		}
 		case 'd': {
-			arguments.dry_run = true;
+			dry_run = true;
 			break;
 		}
 	}
@@ -74,16 +66,16 @@ void mkpath(char* file_path, mode_t mode) {
 }
 
 void cp(char* source_path, char* dest_path) {
-	if(arguments.dry_run) return;
+	if(dry_run) return;
 
 	FILE *source, *dest;
 	source = fopen(source_path, "rb");
 	dest   = fopen(dest_path,   "wb");
 
-	char buffer[arguments.buffer_size];
+	char buffer[buffer_size];
 	size_t size;
 
-	while ((size = fread(buffer, 1, arguments.buffer_size, source)))
+	while ((size = fread(buffer, 1, buffer_size, source)))
         fwrite(buffer, 1, size, dest);
 
 	fclose(source);
@@ -108,8 +100,8 @@ void append(char*** dest, int* length, char* add) {
 	(*length)++;
 	size_t new_size = *length * sizeof(char*);
 	char** temp = malloc(new_size);
-	for(int i = 0; i < *length -1; i++)
-		temp[i] = *dest[i];
+	for(int i = 0; i < (*length) -1; i++)
+		temp[i] = (*dest)[i];
 	temp[*length-1] = add;
 
 	free(*dest);
@@ -117,7 +109,7 @@ void append(char*** dest, int* length, char* add) {
 }
 
 static int handler(void* user, const char* section, const char* name, const char* value) {
-	if (strcmp(section, arguments.config_section) != 0) return 1;
+	if (strcmp(section, config_section) != 0) return 1;
 
 	if      (0 == strcmp(name, "music_dir"))           music_dir           = strdup(value);
 	else if (0 == strcmp(name, "playlist_dir"))        playlist_dir        = strdup(value);
@@ -179,10 +171,10 @@ void sha1_file(char* path, unsigned char (*hash)[SHA_DIGEST_LENGTH]) {
 	FILE *file;
 	file = fopen(path, "rb");
 
-	char buffer[arguments.buffer_size];
+	char buffer[buffer_size];
 	size_t size;
 
-	while ((size = fread(buffer, 1, arguments.buffer_size, file)))
+	while ((size = fread(buffer, 1, buffer_size, file)))
 		SHA1_Update(&ctx, buffer, size);
 
 	fclose(file);
