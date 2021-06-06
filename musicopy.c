@@ -79,12 +79,23 @@ void create_folder_for_file(char* file_path) {
 	mkpath(destfolder, 0775);
 }
 
-void cp(char* source_path, char* dest_path) {
-	if(dry_run) return;
+int cp(char* source_path, char* dest_path) {
+	if(dry_run) return 0;
 
 	FILE *source, *dest;
 	source = fopen(source_path, "rb");
 	dest   = fopen(dest_path,   "wb");
+
+	if(source == NULL) {
+		fprintf(stderr, "can't read source: \"%s\" skipping...\n", source_path);
+		if(dest != NULL) fclose(dest);
+		return 1;
+	}
+	if(dest == NULL) {
+		fprintf(stderr, "can't write to destination: \"%s\" skipping...\n", dest_path);
+		if(source != NULL) fclose(source);
+		return 1;
+	}
 
 	char buffer[buffer_size];
 	size_t size;
@@ -94,6 +105,8 @@ void cp(char* source_path, char* dest_path) {
 
 	fclose(source);
 	fclose(dest);
+
+	return 0;
 }
 
 char* join_path(char* a, char* b) {
@@ -151,7 +164,7 @@ static int ini_callback(void* user, const char* section, const char* name, const
 }
 
 void exit_err(char* msg) {
-	printf("%s exiting...\n", msg);
+	fprintf(stderr, "%s exiting...\n", msg);
 	exit(1);
 }
 
@@ -240,8 +253,8 @@ void copy(const char* fullpath) {
 	bool copy = true;
 	if(access(destpath, F_OK) == 0) copy = duplicate(sourcepath, destpath);
 	if(copy) {
-		cp(sourcepath, destpath);
-		printf("%s -> %s\n", sourcepath, destpath);
+		int copied = cp(sourcepath, destpath);
+		if (copied == 0) printf("%s -> %s\n", sourcepath, destpath);
 	}
 
 	free(sourcepath);
@@ -299,8 +312,7 @@ int playlist_dir_callback(const char* path, const struct stat *sb, int tflag) {
 
 	int prefix_len = strlen(playlist_prefix);
 	while (fgets(line, max_length, source_playlist) != NULL) {
-		char* original_line = (char*) malloc((strlen(line) + 1) * sizeof(char));
-		strcpy(original_line, line);
+		char* original_line = strdup(line);
 
 		if (starts_with(playlist_prefix, line))
 			sprintf(line, "%s%s", target_playlist_prefix, &original_line[prefix_len]);
@@ -329,7 +341,7 @@ int main(int argc, char* argv[]) {
 	fix_include_exclude(&include, include_length);
 	fix_include_exclude(&exclude, exclude_length);
 
-	// ftw(music_dir, music_dir_callback, 0);
+	ftw(music_dir, music_dir_callback, 0);
 	ftw(playlist_dir, playlist_dir_callback, 0);
 
 	return 0;
