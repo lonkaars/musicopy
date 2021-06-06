@@ -25,6 +25,10 @@ int buffer_size = 4096;
 char* config_section = "default";
 bool dry_run = false;
 
+char* playlist_prefix;
+char* target_playlist_prefix;
+char* change_playlist_extension;
+
 const char *argp_program_version = "0.1.0";
 const char *argp_program_bug_address = "https://github.com/lonkaars/musicopy/";
 static char doc[] = "a simple utility that copies music and playlists";
@@ -65,6 +69,16 @@ void mkpath(char* file_path, mode_t mode) {
     }
 }
 
+void create_folder_for_file(char* file_path) {
+	if(dry_run) return;
+
+	size_t destfolder_size;
+	cwk_path_get_dirname(file_path, &destfolder_size);
+	char* destfolder = (char*) malloc(destfolder_size);
+	destfolder = strncpy(destfolder, file_path, destfolder_size);
+	mkpath(destfolder, 0775);
+}
+
 void cp(char* source_path, char* dest_path) {
 	if(dry_run) return;
 
@@ -96,6 +110,13 @@ char* substr(const char* src, int from) {
 	return substr;
 }
 
+// https://stackoverflow.com/questions/4770985/how-to-check-if-a-string-starts-with-another-string-in-c
+bool starts_with(const char *pre, const char *str) {
+	size_t lenpre = strlen(pre),
+		   lenstr = strlen(str);
+	return lenstr < lenpre ? false : memcmp(pre, str, lenpre) == 0;
+}
+
 void append(char*** dest, int* length, char* add) {
 	(*length)++;
 	size_t new_size = *length * sizeof(char*);
@@ -108,16 +129,23 @@ void append(char*** dest, int* length, char* add) {
 	*dest = temp;
 }
 
-static int handler(void* user, const char* section, const char* name, const char* value) {
+static int ini_callback(void* user, const char* section, const char* name, const char* value) {
 	if (strcmp(section, config_section) != 0) return 1;
 
-	if      (0 == strcmp(name, "music_dir"))           music_dir           = strdup(value);
-	else if (0 == strcmp(name, "playlist_dir"))        playlist_dir        = strdup(value);
+	if      (0 == strcmp(name, "music_dir"))    music_dir    = strdup(value);
+	else if (0 == strcmp(name, "playlist_dir")) playlist_dir = strdup(value);
+
 	else if (0 == strcmp(name, "target_music_dir"))    target_music_dir    = strdup(value);
 	else if (0 == strcmp(name, "target_playlist_dir")) target_playlist_dir = strdup(value);
-	else if (0 == strcmp(name, "existing"))            existing            = strdup(value);
-	else if (0 == strcmp(name, "include"))             append(&include, &include_length, strdup(value));
-	else if (0 == strcmp(name, "exclude"))             append(&exclude, &exclude_length, strdup(value));
+
+	else if (0 == strcmp(name, "existing")) existing = strdup(value);
+
+	else if (0 == strcmp(name, "include")) append(&include, &include_length, strdup(value));
+	else if (0 == strcmp(name, "exclude")) append(&exclude, &exclude_length, strdup(value));
+
+	else if (0 == strcmp(name, "playlist_prefix"))           playlist_prefix           = strdup(value);
+	else if (0 == strcmp(name, "target_playlist_prefix"))    target_playlist_prefix    = strdup(value);
+	else if (0 == strcmp(name, "change_playlist_extension")) change_playlist_extension = strdup(value);
 
 	return 1;
 }
@@ -144,7 +172,7 @@ void load_config() {
 	target_music_dir    = strdup("");
 	target_playlist_dir = strdup("");
 
-	if (ini_parse(config_path, handler, NULL) < 0) exit_err("Can't load configuration file!");
+	if (ini_parse(config_path, ini_callback, NULL) < 0) exit_err("Can't load configuration file!");
 }
 
 void expandpath(char** path) {
@@ -205,12 +233,8 @@ void copy(const char* fullpath) {
 	char* basepath = substr(fullpath, baselen);
 	char* destpath = join_path(target_music_dir, basepath);
 
-	size_t destfolder_size;
-	cwk_path_get_dirname(destpath, &destfolder_size);
-	char* destfolder = (char*) malloc(destfolder_size);
-	destfolder = strncpy(destfolder, destpath, destfolder_size);
+	create_folder_for_file(destpath);
 
-	mkpath(destfolder, 0775);
 	char* sourcepath = strdup(fullpath);
 
 	bool copy = true;
@@ -223,7 +247,7 @@ void copy(const char* fullpath) {
 	free(sourcepath);
 }
 
-int dir_callback(const char* path, const struct stat *sb, int tflag) {
+int music_dir_callback(const char* path, const struct stat *sb, int tflag) {
 	if(tflag != FTW_F) return 0;
 
 	if (include_length > 0) {
@@ -244,6 +268,53 @@ int dir_callback(const char* path, const struct stat *sb, int tflag) {
 	return 0;
 }
 
+int playlist_dir_callback(const char* path, const struct stat *sb, int tflag) {
+	if(tflag != FTW_F) return 0;
+
+	FILE *source_playlist = fopen(path, "r");
+
+	fseek(source_playlist, 0, SEEK_END);
+	long max_length = ftell(source_playlist) / sizeof(char) + 1;
+	fseek(source_playlist, 0, SEEK_SET);
+
+	char* line = (char*) malloc(max_length * sizeof(char));
+
+	// change base path to target_playlist_dir
+	int baselen = strlen(playlist_dir);
+	char* basepath = substr(path, baselen);
+	char* destpath = join_path(target_playlist_dir, basepath);
+	create_folder_for_file(destpath);
+
+	// change file extension
+	if(change_playlist_extension != NULL) {
+		size_t new_path_size = ((strlen(destpath) + strlen(change_playlist_extension) + 4) * sizeof(char));
+		char* new_path = (char*) malloc(new_path_size);
+		cwk_path_change_extension(destpath, change_playlist_extension, new_path, new_path_size);
+
+		free(destpath);
+		destpath = new_path;
+	}
+
+	FILE *dest_playlist = fopen(destpath, "w");
+
+	int prefix_len = strlen(playlist_prefix);
+	while (fgets(line, max_length, source_playlist) != NULL) {
+		char* original_line = (char*) malloc((strlen(line) + 1) * sizeof(char));
+		strcpy(original_line, line);
+
+		if (starts_with(playlist_prefix, line))
+			sprintf(line, "%s%s", target_playlist_prefix, &original_line[prefix_len]);
+
+		free(original_line);
+		fputs(line, dest_playlist);
+	}
+
+	fclose(source_playlist);
+	fclose(dest_playlist);
+
+	return 0;
+}
+
 int main(int argc, char* argv[]) {
 	argp_parse(&argp, argc, argv, 0, 0, NULL);
 
@@ -258,7 +329,8 @@ int main(int argc, char* argv[]) {
 	fix_include_exclude(&include, include_length);
 	fix_include_exclude(&exclude, exclude_length);
 
-	ftw(music_dir, dir_callback, 0);
+	// ftw(music_dir, music_dir_callback, 0);
+	ftw(playlist_dir, playlist_dir_callback, 0);
 
 	return 0;
 }
