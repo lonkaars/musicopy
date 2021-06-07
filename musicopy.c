@@ -29,6 +29,9 @@ char* playlist_prefix;
 char* target_playlist_prefix;
 char* change_playlist_extension;
 
+char* config_path = NULL;
+char* cache_path = NULL;
+
 const char *argp_program_version = "0.1.0";
 const char *argp_program_bug_address = "https://github.com/lonkaars/musicopy/";
 static char doc[] = "a simple utility that copies music and playlists";
@@ -169,16 +172,12 @@ void exit_err(char* msg) {
 }
 
 void load_config() {
-	char* home = getenv("XDG_CONFIG_HOME");
-	if(!home) exit_err("$XDG_CONFIG_HOME could not be read!");
+	char* config_file_path = join_path(config_path, "musicopy/rc.ini");
 
-	char* config_file_loc = "musicopy/rc.ini";
-	char* config_path = join_path(home, config_file_loc);
+	if( access(config_file_path, F_OK) != 0 ) exit_err("Config file could not be read!");
 
-	if( access(config_path, F_OK) != 0 ) exit_err("Config file could not be read!");
-
-	exclude_length      = 0;
-	include_length      = 0;
+	exclude_length = 0;
+	include_length = 0;
 
 	music_dir    = strdup("");
 	playlist_dir = strdup("");
@@ -192,7 +191,7 @@ void load_config() {
 	target_playlist_prefix    = strdup("");
 	change_playlist_extension = strdup("");
 
-	if (ini_parse(config_path, ini_callback, NULL) < 0) exit_err("Can't load configuration file!");
+	if (ini_parse(config_file_path, ini_callback, NULL) < 0) exit_err("Can't load configuration file!");
 }
 
 void expandpath(char** path) {
@@ -298,7 +297,6 @@ int playlist_dir_callback(const char* path, const struct stat *sb, int tflag) {
 	if(dry_run) return 0;
 
 	FILE *source_playlist = fopen(path, "r");
-
 	if(source_playlist == NULL) {
 		fprintf(stderr, "couldn't open playlist \'%s\' in `int playlist_dir_callback()`, skipping...\n", path);
 		return 0;
@@ -316,6 +314,10 @@ int playlist_dir_callback(const char* path, const struct stat *sb, int tflag) {
 	char* destpath = join_path(target_playlist_dir, basepath);
 	create_folder_for_file(destpath);
 
+	// get cache location
+	char* cachepath = join_path(cache_path, basepath);
+	create_folder_for_file(cachepath);
+
 	// change file extension
 	if(change_playlist_extension != NULL) {
 		size_t new_path_size = ((strlen(destpath) + strlen(change_playlist_extension) + 4) * sizeof(char));
@@ -327,10 +329,17 @@ int playlist_dir_callback(const char* path, const struct stat *sb, int tflag) {
 	}
 
 	FILE *dest_playlist = fopen(destpath, "w");
-
 	if(dest_playlist == NULL) {
 		fprintf(stderr, "couldn't open playlist \'%s\' in `int playlist_dir_callback()`, skipping...\n", destpath);
 		fclose(source_playlist);
+		return 0;
+	}
+
+	FILE *cache_playlist = fopen(cachepath, "w");
+	if(cache_playlist == NULL) {
+		fprintf(stderr, "couldn't open playlist \'%s\' in `int playlist_dir_callback()`, skipping...\n", destpath);
+		fclose(source_playlist);
+		fclose(dest_playlist);
 		return 0;
 	}
 
@@ -343,6 +352,7 @@ int playlist_dir_callback(const char* path, const struct stat *sb, int tflag) {
 
 		free(original_line);
 		fputs(line, dest_playlist);
+		fputs(line, cache_playlist);
 	}
 
 	fclose(source_playlist);
@@ -352,6 +362,13 @@ int playlist_dir_callback(const char* path, const struct stat *sb, int tflag) {
 }
 
 int main(int argc, char* argv[]) {
+	config_path = getenv("XDG_CONFIG_HOME");
+	if(!config_path) exit_err("$XDG_CONFIG_HOME could not be read!");
+
+	char* xdg_cache_home = getenv("XDG_CACHE_HOME");
+	cache_path = join_path(xdg_cache_home, "musicopy/");
+	if(!cache_path) exit_err("$XDG_CACHE_HOME could not be read!");
+
 	argp_parse(&argp, argc, argv, 0, 0, NULL);
 
 	load_config();
