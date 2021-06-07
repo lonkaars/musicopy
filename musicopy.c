@@ -179,11 +179,18 @@ void load_config() {
 
 	exclude_length      = 0;
 	include_length      = 0;
-	existing            = strdup("");
-	music_dir           = strdup("");
-	playlist_dir        = strdup("");
+
+	music_dir    = strdup("");
+	playlist_dir = strdup("");
+
 	target_music_dir    = strdup("");
 	target_playlist_dir = strdup("");
+
+	existing = strdup("");
+
+	playlist_prefix           = strdup("");
+	target_playlist_prefix    = strdup("");
+	change_playlist_extension = strdup("");
 
 	if (ini_parse(config_path, ini_callback, NULL) < 0) exit_err("Can't load configuration file!");
 }
@@ -323,6 +330,7 @@ int playlist_dir_callback(const char* path, const struct stat *sb, int tflag) {
 
 	if(dest_playlist == NULL) {
 		fprintf(stderr, "couldn't open playlist \'%s\' in `int playlist_dir_callback()`, skipping...\n", destpath);
+		fclose(source_playlist);
 		return 0;
 	}
 
