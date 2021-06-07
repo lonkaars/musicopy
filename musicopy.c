@@ -169,10 +169,10 @@ void exit_err(char* msg) {
 }
 
 void load_config() {
-	char* home = getenv("HOME");
-	if(!home) exit_err("$HOME could not be read!");
+	char* home = getenv("XDG_CONFIG_HOME");
+	if(!home) exit_err("$XDG_CONFIG_HOME could not be read!");
 
-	char* config_file_loc = ".config/musicopy/rc.ini";
+	char* config_file_loc = "musicopy/rc.ini";
 	char* config_path = join_path(home, config_file_loc);
 
 	if( access(config_path, F_OK) != 0 ) exit_err("Config file could not be read!");
@@ -211,6 +211,11 @@ void sha1_file(char* path, unsigned char (*hash)[SHA_DIGEST_LENGTH]) {
 
 	FILE *file;
 	file = fopen(path, "rb");
+
+	if(file == NULL) {
+		fprintf(stderr, "couldn't open file \'%s\' in `void sha1_file()`, skipping...\n", path);
+		return;
+	}
 
 	char buffer[buffer_size];
 	size_t size;
@@ -283,8 +288,14 @@ int music_dir_callback(const char* path, const struct stat *sb, int tflag) {
 
 int playlist_dir_callback(const char* path, const struct stat *sb, int tflag) {
 	if(tflag != FTW_F) return 0;
+	if(dry_run) return 0;
 
 	FILE *source_playlist = fopen(path, "r");
+
+	if(source_playlist == NULL) {
+		fprintf(stderr, "couldn't open playlist \'%s\' in `int playlist_dir_callback()`, skipping...\n", path);
+		return 0;
+	}
 
 	fseek(source_playlist, 0, SEEK_END);
 	long max_length = ftell(source_playlist) / sizeof(char) + 1;
@@ -309,6 +320,11 @@ int playlist_dir_callback(const char* path, const struct stat *sb, int tflag) {
 	}
 
 	FILE *dest_playlist = fopen(destpath, "w");
+
+	if(dest_playlist == NULL) {
+		fprintf(stderr, "couldn't open playlist \'%s\' in `int playlist_dir_callback()`, skipping...\n", destpath);
+		return 0;
+	}
 
 	int prefix_len = strlen(playlist_prefix);
 	while (fgets(line, max_length, source_playlist) != NULL) {
